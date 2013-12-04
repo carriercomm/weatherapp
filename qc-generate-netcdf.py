@@ -5,7 +5,10 @@
 from netCDF4 import Dataset, stringtochar, chartostring, stringtoarr
 import numpy as np
 import cPickle as pickle
+import json
+import fileinput
 import os, datetime, time
+import sys
 import pika
 from mynetcdf import mynetcdf
 
@@ -17,7 +20,12 @@ rabbitmq_server = 'vm-148-118.uc.futuregrid.org'
 def recordobs(obs):
     # record the provided observation dict
     ct = datetime.datetime.fromtimestamp(int(obs['timestamp'])+18000) # cst to utc
-    storagepath='/ldm/var/data/aggregate/qualitycontrol/' # location
+    storagepath=os.environ.get('STORAGE', '/ldm/var/data/aggregate/qualitycontrol') # location
+    storagepath="%s/" % storagepath
+    try:
+        os.makedirs(storagepath + "Last5ByStation/")
+    except:
+        pass
     fprefix = 'anl-qc-' # file class prefix
     filename = fprefix+ct.strftime('%Y')+'-'+ct.strftime('%m')+'-'+ct.strftime('%d')+'-'+ct.strftime('%H')+'00.nc'
     if filename not in qcfiles.keys():
@@ -47,25 +55,31 @@ def recordobs(obs):
 def callback(ch, method, properties, body):
     # queue call back function on event
     t = time.time()
-    obs = pickle.loads(body) # expand our object back
-    ch.basic_ack(delivery_tag = method.delivery_tag)
+    #obs = pickle.loads(body) # expand our object back
+    obs = json.loads(body) # expand our object back
+    #ch.basic_ack(delivery_tag = method.delivery_tag)
     recordobs(obs)
-    print "{0:10.10f}".format(time.time()-t)
+    print >> sys.stdout, "{0:10.10f}".format(time.time()-t)
     time.sleep(0.001)
 
 if __name__=="__main__":
     # we can assume this is the general execution case
  
-    connection = pika.BlockingConnection(pika.ConnectionParameters(
-            host=rabbitmq_server))
-    channel = connection.channel()
-    channel.queue_declare(queue='Final', durable=True)
-    os.umask(003)
-    os.setgid(1004)
-    os.seteuid(1004)
+    #connection = pika.BlockingConnection(pika.ConnectionParameters(
+            #host=rabbitmq_server))
+    #channel = connection.channel()
+    #channel.queue_declare(queue='Final', durable=True)
+    #os.umask(003)
+    #os.setgid(1004)
+    #os.seteuid(1004)
     # now that our initials are set lets move forward to some packets
-    channel.basic_consume(callback,
-                      queue='Final')
-    channel.start_consuming()
-    print "goodbye"
+    #channel.basic_consume(callback,
+                      #queue='Final')
+    #channel.start_consuming()
+    for line in fileinput.input():
+        try:
+            callback(None, None, None, line)
+        except IndexError:
+            pass
+    print >> sys.stdout, "goodbye"
 

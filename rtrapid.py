@@ -1,4 +1,5 @@
 from lxml import etree
+import sys
 import time, random
 import numpy as np
 import urllib2, gzip
@@ -14,14 +15,17 @@ lastupdate  = {stnlst[i]: 0 for i in range(0, len(stnlst))}
 urlstart = 'http://stationdata.wunderground.com/cgi-bin/stationlookup?station='
 urlend = '&format=xml&maxage=20&rand='#1373482597163&_=1373482597165' # time with 3  dec place removed
 
+RUNNING = True
+
 def monitor(stationindex, stationindexend, threadid):
+    global RUNNING
     #  to loop and occasionaly fire off a request
     # assume at least 32+ stations in list intitally 200 so should be fine
     (connection, channel) = dbutil2.sdbconn()
 
-    while 1:
+    while RUNNING:
 #        try:
-            print str(threadid)+": started :"+str(stationindex)+"-"+str(stationindexend)
+            print >> sys.stderr, str(threadid)+": started :"+str(stationindex)+"-"+str(stationindexend)
             time.sleep(random.randint(20,25)) #sleep some random number 0-30 sec
             #print str(threadid)+": "+str(stnlst[stationindex:stationindexend])
             request(stnlst[stationindex:stationindexend], threadid, (connection,channel))
@@ -87,6 +91,7 @@ def pxml(inbound, conchan):
     
    
 if __name__=="__main__":
+
     #fire up some threads 
     for x in np.arange(0,8):
         stationindex=x*32
@@ -94,5 +99,12 @@ if __name__=="__main__":
         stationindexend=min(stationindexend, len(stnlst))
         t = Thread(target=monitor, args=(stationindex, stationindexend, x))
         t.start()
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        RUNNING = False
+
     
 

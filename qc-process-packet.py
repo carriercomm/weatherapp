@@ -6,9 +6,12 @@
 from netCDF4 import Dataset, stringtochar, chartostring
 #from Scientific.IO.NetCDF import NetCDFFile as urlDataset
 import cPickle as pickle
+import json
 import time ,calendar, datetime, os
 import numpy as np
 import pika
+import sys
+import fileinput
 from threading import Thread, Lock
 ## most of this QC is from  http://madis.noaa.gov/madis_sfc_qc.html
 
@@ -47,7 +50,7 @@ def L2_temporal(obs, stnhistory):
                     try:
                         mrate = (float(obs['value'])-hist_value)/((float(obs['timestamp'])-hist_time)*60*60) # rate per hour, type casted for safety
                     except:
-                        print "except"
+                        print >> sys.stderr, "except"
                         mrate = 0 # assume a div by zero 
                         pass
                     if mrate < temporal[obs['key']]:
@@ -67,7 +70,7 @@ def runqc(obs):
     #print str(ii)+" : "+storagepath+filename
 
     if (os.path.isfile(storagepath+filename)):
-	print "exists! and Ppen"
+	print >> sys.stderr, "exists! and Ppen"
         rootcdf = Dataset(storagepath+filename, 'r')
         t = time.time()
         # Load the ship
@@ -90,26 +93,33 @@ def runqc(obs):
 
 def callback(ch, method, properties, body):    
     global channel_final, lock
-    obs = pickle.loads(body) # expand our object back
-    ch.basic_ack(delivery_tag = method.delivery_tag)
-    print " Received %r %r" % (obs['stn'], obs['key'],)
+    obs = json.loads(body) # expand our object back
+    #ch.basic_ack(delivery_tag = method.delivery_tag)
+    print >> sys.stderr, " Received %r %r" % (obs['stn'], obs['key'],)
     obs = runqc(obs)
-    with lock:
-        channel_final.basic_publish(exchange='Outflow',routing_key='',body=pickle.dumps(obs), properties=pika.BasicProperties(delivery_mode=2,))
+    #with lock:
+        #channel_final.basic_publish(exchange='Outflow',routing_key='',body=pickle.dumps(obs), properties=pika.BasicProperties(delivery_mode=2,))
+    #print pickle.dumps(obs)
+    print json.dumps(obs)
     time.sleep(0.01) # sleep to yield cpu
     
 def monitor():
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host=rabbitmq_server))
-    channel = connection.channel()
-    queuename = 'ToBeQc'
-    channel.queue_declare(queue=queuename, durable=True)
-    channel.basic_consume(callback,
-                          queue=queuename)
-    channel.start_consuming()
+    #connection = pika.BlockingConnection(pika.ConnectionParameters(host=rabbitmq_server))
+    #channel = connection.channel()
+    #queuename = 'ToBeQc'
+    #channel.queue_declare(queue=queuename, durable=True)
+    #channel.basic_consume(callback,
+                          #queue=queuename)
+    #channel.start_consuming()
+    for line in fileinput.input():
+        try:
+            callback(None, None, None, line)
+        except IndexError:
+            pass
     
 if __name__=="__main__":
-    connection_final = pika.BlockingConnection(pika.ConnectionParameters(host=rabbitmq_server))
-    channel_final = connection_final.channel()
+    #connection_final = pika.BlockingConnection(pika.ConnectionParameters(host=rabbitmq_server))
+    #channel_final = connection_final.channel()
     lock=Lock()
 #     for x in np.arange(0,1):
 #         t = Thread(target=monitor)
